@@ -112,19 +112,61 @@ fn parse_comment(
 }
 
 fn parse_term(input: String) -> Result(#(ast.Term, String), MyError) {
-  let #(comment, remaining) = case parse_item_comment(input) {
+  let #(comment, input) = case parse_item_comment(input) {
     Ok(#(comment, remaining)) -> #(Some(comment), remaining)
     Error(_) -> #(None, input)
   }
+
+  let input = string.trim_left(input)
+
+  use _ <- result.try(case string.first(input) {
+    Ok("-") -> Ok(Nil)
+    _ -> Error("Missing '-' at the beginning of the identifier")
+  })
+  let input = string.drop_left(input, 1)
+
+  use #(id, input) <- result.try(parse_identifier(input))
+  let input = string.trim_left(input)
+
+  use first <- result.try(
+    string.first(input) |> result.map_error(fn(_) { "Missing '='" }),
+  )
+  use _ <- result.try(case first {
+    "=" -> Ok(Nil)
+    _ -> Error("Missing '=', found " <> first)
+  })
+  let input = string.slice(input, 1, string.length(input))
+  let input = string.trim_left(input)
+
+  use #(value, remaining) <- result.try(parse_pattern(input))
+
+  Ok(#(
+    ast.Term(id: id, attributes: [], comment: comment, value: value),
+    remaining,
+  ))
+}
+
+fn parse_pattern(input: String) -> Result(#(ast.Pattern, String), MyError) {
+  // TODO support placeables and multiline patterns
+  let #(matched, remaining) = parse_until_newline_or_end(input)
+  let matched = case string.last(matched) {
+    Ok("\n") -> string.drop_right(matched, 1)
+    _ -> matched
+  }
+
+  Ok(#(
+    ast.Pattern(elements: [ast.PatternText(ast.Text(value: matched))]),
+    remaining,
+  ))
 }
 
 fn is_alpha(grapheme: String) -> Bool {
-  let assert Ok(re) = regex.from_string("\\p{Letter}")
+  let assert Ok(re) = regex.from_string("\\p{L}")
   re |> regex.check(grapheme)
 }
 
 fn is_number(grapheme: String) -> Bool {
-  let assert Ok(re) = regex.from_string("\\p{Number}")
+  let assert Ok(re) = regex.from_string("\\p{N}")
   re |> regex.check(grapheme)
 }
 
